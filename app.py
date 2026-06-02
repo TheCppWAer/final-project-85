@@ -41,6 +41,12 @@ MAP_VIEW = {
     "europe": {"center": [42.5000, 12.5000],  "zoom": 5},
 }
 
+# ── 開發測試開關（僅手動修改）─────────────────────────────
+# 設為 True 時，/api/question 會額外回傳正確答案座標，
+# 前端會在作答畫面直接標出答案，供開發人員作弊測試。
+# 正式上線前務必改回 False，否則玩家可從網路請求看到答案。
+DEV_SHOW_ANSWER = True
+
 def haversine(lat1, lon1, lat2, lon2):
     R = 6371.0
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
@@ -209,7 +215,12 @@ def api_question():
     session["round"] = rnd + 1
     session["rounds"] = rounds
 
-    return jsonify({"round": rnd + 1, "image_url": item["image_url"], "region": region})
+    resp = {"round": rnd + 1, "image_url": item["image_url"], "region": region}
+    # 開發測試模式：附帶正確答案座標，前端會直接標示
+    if DEV_SHOW_ANSWER:
+        resp["answer_lat"] = item["lat"]
+        resp["answer_lon"] = item["lon"]
+    return jsonify(resp)
 
 # ── API：送出猜測 ────────────────────────────────────────
 @app.route("/api/submit", methods=["POST"])

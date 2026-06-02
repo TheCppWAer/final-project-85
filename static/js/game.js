@@ -26,6 +26,7 @@ let mapZoom = 10;
 let map = null;
 let normalLayer = null;
 let noLabelLayer = null;
+let devAnswerMarker = null;   // 開發模式：標示正確答案的標記
 
 function initMap(center, zoom) {
     if (map) return;
@@ -34,37 +35,36 @@ function initMap(center, zoom) {
     mapCenter = center;
     mapZoom = zoom;
 
-    normalLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "© OpenStreetMap contributors",
+    // bug 修正 ── 底圖改用 CARTO 的 CDN（比 OSM 公用伺服器快且穩定），
+    //            放大時不再因為圖磚載入過慢而顯示灰白。
+    // 有地名底圖（zoom <= 10 顯示）
+    normalLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+        attribution: "© OpenStreetMap contributors © CARTO",
+        subdomains: "abcd",
         maxZoom: MAX_ZOOM,
     });
 
+    // 無地名底圖（zoom > 10 顯示，避免看到地名）
     noLabelLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
         attribution: "© OpenStreetMap contributors © CARTO",
+        subdomains: "abcd",
         maxZoom: MAX_ZOOM,
     });
 
+    // bug 修正 ── 兩層底圖同時加入地圖，靠透明度切換而非 add/removeLayer。
+    //            移除圖層會丟棄已下載的圖磚，切換時整片重新抓 → 灰白；
+    //            改用 setOpacity 後切換即時、不需重新下載。
     map = L.map("map", {
         center: center,
         zoom: zoom,
         maxZoom: MAX_ZOOM,
-        layers: [normalLayer],
+        layers: [normalLayer, noLabelLayer],
     });
+    noLabelLayer.setOpacity(zoom > 10 ? 1 : 0);
 
-    // 超過 zoom 10 切換無地名底圖
+    // 超過 zoom 10 顯示無地名底圖（只切換透明度）
     map.on("zoomend", () => {
-        const z = map.getZoom();
-        if (z > 10) {
-            if (map.hasLayer(normalLayer)) {
-                map.removeLayer(normalLayer);
-                map.addLayer(noLabelLayer);
-            }
-        } else {
-            if (map.hasLayer(noLabelLayer)) {
-                map.removeLayer(noLabelLayer);
-                map.addLayer(normalLayer);
-            }
-        }
+        noLabelLayer.setOpacity(map.getZoom() > 10 ? 1 : 0);
     });
 
     // 玩家點擊地圖放置猜測標記
@@ -108,6 +108,7 @@ async function loadQuestion() {
     guessLat = null;
     guessLon = null;
     if (guessMarker) { map.removeLayer(guessMarker); guessMarker = null; }
+    if (devAnswerMarker) { map.removeLayer(devAnswerMarker); devAnswerMarker = null; }
     if (loadWatchdog) { clearTimeout(loadWatchdog); loadWatchdog = null; }
 
     const confirmBtn = document.getElementById("confirmBtn");
@@ -142,6 +143,15 @@ async function loadQuestion() {
     document.getElementById("roundNum").textContent = currentRound;
     document.getElementById("regionLabel").textContent =
         "地區：" + (data.region === "taipei" ? "🏙️ 台北" : "🗺️ 歐洲");
+
+    // 開發測試模式：後端（DEV_SHOW_ANSWER=True）會回傳答案座標，直接在地圖標出
+    if (data.answer_lat != null && data.answer_lon != null) {
+        devAnswerMarker = L.marker([data.answer_lat, data.answer_lon], {
+            icon: L.divIcon({ className: "", html: "<div style='font-size:26px'>🟢</div>", iconSize: [26, 26], iconAnchor: [13, 13] })
+        }).bindPopup("🛠️ 開發模式：正確答案").addTo(map);
+        document.getElementById("regionLabel").textContent +=
+            `　🛠️ 答案：${data.answer_lat.toFixed(4)}, ${data.answer_lon.toFixed(4)}`;
+    }
 
     const img = document.getElementById("streetPhoto");
 
@@ -215,7 +225,12 @@ function startTimer() {
       bar.style.background = "#2ea043";
     }
 
-    if (secondsLeft <= 0) { clearInterval(timerInterval); submitAnswer(true); }
+    if (secondsLeft <= 0) {
+      clearInterval(timerInterval);
+      // 功能 ── 時間到時，若已放置標記則以最後標記位置計分，否則才算跳過
+      const hasGuess = (guessLat !== null && guessLon !== null);
+      submitAnswer(!hasGuess);
+    }
   }, 1000);
 }
 
@@ -255,8 +270,11 @@ function showResult(data) {
     const guessLL = data.skipped ? trueLL : [data.guess_lat, data.guess_lon];
 
     resultLeaflet = L.map("resultMap", { zoomControl: true });
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "© OpenStreetMap contributors",
+    // bug 修正 ── 結算地圖同樣改用 CARTO CDN 並設定 maxZoom，放大時可順利載入
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+        attribution: "© OpenStreetMap contributors © CARTO",
+        subdomains: "abcd",
+        maxZoom: 19,
     }).addTo(resultLeaflet);
 
     L.marker(trueLL, {
