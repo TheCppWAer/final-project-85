@@ -24,8 +24,8 @@ let mapCenter = [25.0330, 121.5654];
 let mapZoom = 10;
 
 let map = null;
-let normalLayer = null;
-let noLabelLayer = null;
+let baseLayer = null;     // 彩色無地名底圖（整局常駐，單一較重圖層）
+let labelsLayer = null;   // 地名標籤（僅 zoom <= 10 疊加，輕量透明）
 let devAnswerMarker = null;   // 開發模式：標示正確答案的標記
 
 function initMap(center, zoom) {
@@ -35,36 +35,38 @@ function initMap(center, zoom) {
     mapCenter = center;
     mapZoom = zoom;
 
-    // bug 修正 ── 底圖改用 CARTO 的 CDN（比 OSM 公用伺服器快且穩定），
-    //            放大時不再因為圖磚載入過慢而顯示灰白。
-    // 有地名底圖（zoom <= 10 顯示）
-    normalLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+    // bug 修正 ── 只用「單一」彩色底圖整局常駐：放大時僅這一層需載入圖磚
+    //            （與已修好的結算地圖相同），不再因同時載入兩張完整底圖而變慢／灰白。
+    baseLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png", {
         attribution: "© OpenStreetMap contributors © CARTO",
         subdomains: "abcd",
         maxZoom: MAX_ZOOM,
     });
 
-    // 無地名底圖（zoom > 10 顯示，避免看到地名）
-    noLabelLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
-        attribution: "© OpenStreetMap contributors © CARTO",
+    // 地名標籤：輕量透明圖層，只在 zoom <= 10 疊加；放大（>10）時移除，
+    //          既避免看到地名，放大時也只需載入底圖一層。
+    labelsLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png", {
+        attribution: "© CARTO",
         subdomains: "abcd",
         maxZoom: MAX_ZOOM,
     });
 
-    // bug 修正 ── 兩層底圖同時加入地圖，靠透明度切換而非 add/removeLayer。
-    //            移除圖層會丟棄已下載的圖磚，切換時整片重新抓 → 灰白；
-    //            改用 setOpacity 後切換即時、不需重新下載。
     map = L.map("map", {
         center: center,
         zoom: zoom,
         maxZoom: MAX_ZOOM,
-        layers: [normalLayer, noLabelLayer],
+        layers: [baseLayer],
     });
-    noLabelLayer.setOpacity(zoom > 10 ? 1 : 0);
+    if (zoom <= 10) labelsLayer.addTo(map);
 
-    // 超過 zoom 10 顯示無地名底圖（只切換透明度）
+    // zoom <= 10 顯示地名、> 10 移除地名（底圖始終不動，不會重新下載）
     map.on("zoomend", () => {
-        noLabelLayer.setOpacity(map.getZoom() > 10 ? 1 : 0);
+        const z = map.getZoom();
+        if (z > 10) {
+            if (map.hasLayer(labelsLayer)) map.removeLayer(labelsLayer);
+        } else {
+            if (!map.hasLayer(labelsLayer)) labelsLayer.addTo(map);
+        }
     });
 
     // 玩家點擊地圖放置猜測標記
