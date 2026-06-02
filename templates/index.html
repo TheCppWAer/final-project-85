@@ -44,14 +44,11 @@
         btn.classList.add("selected");
       });
     });
-    document.getElementById("startBtn").addEventListener("click", async () => {
+    // 修正：將所選模式以 URL 參數帶到 /game，由 game.js 統一呼叫 /api/start，
+    //       避免之前 /game 無參數導致 game.js fallback 成 taipei 把 session 蓋掉。
+    document.getElementById("startBtn").addEventListener("click", () => {
       const region = document.querySelector("input[name=region]:checked").value;
-      await fetch("/api/start", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({region})
-      });
-      window.location.href = "/game";
+      window.location.href = "/game?region=" + encodeURIComponent(region);
     });
     document.getElementById("showHistory").addEventListener("click", async (e) => {
       e.preventDefault();

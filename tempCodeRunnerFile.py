@@ -25,22 +25,6 @@ http_session = requests.Session()
 # 台北模式：1 km 內視為重複；歐洲模式：50 km 內視為重複
 MIN_DIST_KM = {"taipei": 1.0, "europe": 50.0}
 
-# ── 計分常數與各模式的計分尺度 √(nm)（公里）──────────────
-# Score = round( 10000 * exp(-K * d / SCALE) )
-# K = 9.21：當 d = 0.5 * SCALE 時得 100 分
-# 地圖越大給分寬度越寬，因此 SCALE 需依模式切換
-#   台北模式 √(nm) = 72、歐洲模式 √(nm) = 3049
-SCORE_K = 9.21
-SCORE_SCALE = {"taipei": 72.0, "europe": 3049.0}
-
-# ── 各模式地圖初始視角：中心 [lat, lon] 與縮放級別 ───────
-# 台北模式：定在台北市中心，Zoom 10
-# 歐洲模式：定在義大利中心，Zoom 5
-MAP_VIEW = {
-    "taipei": {"center": [25.0330, 121.5654], "zoom": 10},
-    "europe": {"center": [42.5000, 12.5000],  "zoom": 5},
-}
-
 def haversine(lat1, lon1, lat2, lon2):
     R = 6371.0
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
@@ -49,9 +33,8 @@ def haversine(lat1, lon1, lat2, lon2):
     a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlam/2)**2
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
-def calc_score(dist_km, region="taipei"):
-    scale = SCORE_SCALE.get(region, SCORE_SCALE["taipei"])
-    return max(0, round(10000 * math.exp(-SCORE_K * dist_km / scale)))
+def calc_score(dist_km):
+    return max(0, round(10000 * math.exp(-dist_km * 9.21 / 72)))
 
 # ── 檢查候選圖片是否與已用過的座標距離夠遠 ─────────────
 def is_far_enough(lat, lon, used_coords, region):
@@ -163,11 +146,7 @@ def api_start():
     # 清空舊快取，預載新局圖片
     image_cache[region].clear()
     prefetch(region, [])
-    view = MAP_VIEW.get(region, MAP_VIEW["taipei"])
-    return jsonify({
-        "ok": True, "region": region,
-        "center": view["center"], "zoom": view["zoom"],
-    })
+    return jsonify({"ok": True, "region": region})
 
 # ── API：取得本回合街景題目 ──────────────────────────────
 @app.route("/api/question", methods=["GET"])
@@ -218,7 +197,6 @@ def api_submit():
     guess_lat = float(data.get("lat", 0))
     guess_lon = float(data.get("lon", 0))
     skipped = data.get("skipped", False)
-    region = session.get("region", "taipei")
     rounds = session.get("rounds", [])
     rnd_idx = session.get("round", 1) - 1
     if rnd_idx < 0 or rnd_idx >= len(rounds):
@@ -228,7 +206,7 @@ def api_submit():
         dist_km, score = 0.0, 0
     else:
         dist_km = haversine(guess_lat, guess_lon, true_lat, true_lon)
-        score = calc_score(dist_km, region)
+        score = calc_score(dist_km)
     scores = session.get("scores", [])
     scores.append(score)
     session["scores"] = scores
