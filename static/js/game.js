@@ -9,9 +9,15 @@ let roundScores = [];
 let submitted = false;
 let resultLeaflet = null;
 
+// 題目是否已就緒（題目資訊回來且圖片載入完成）。未就緒前禁止送出／跳過。
+let questionReady = false;
+// 圖片載入看門狗計時器
+let loadWatchdog = null;
+
 const MAX_ROUNDS = 5;
 const TIMER_SECS = 60;
 const MAX_ZOOM = 13;
+const LOAD_TIMEOUT_MS = 10000;   // 圖片載入超過此時間 → 開放跳過，避免卡住
 
 // v1 ── 地圖初始中心與縮放改為動態，由後端 /api/start 回傳 ──
 let mapCenter = [25.0330, 121.5654];
@@ -63,7 +69,7 @@ function initMap(center, zoom) {
 
     // 玩家點擊地圖放置猜測標記
     map.on("click", (e) => {
-        if (submitted) return;
+        if (submitted || !questionReady) return;
         guessLat = e.latlng.lat;
         guessLon = e.latlng.lng;
         if (guessMarker) {
@@ -98,21 +104,39 @@ async function startGame() {
 
 async function loadQuestion() {
     submitted = false;
+    questionReady = false;                 // 題目尚未就緒 → 禁止送出／跳過
     guessLat = null;
     guessLon = null;
     if (guessMarker) { map.removeLayer(guessMarker); guessMarker = null; }
-    document.getElementById("confirmBtn").disabled = true;
-    document.getElementById("mapHint").textContent = "點擊地圖放置猜測標記";
-    document.getElementById("loadingSpinner").classList.remove("hidden");
+    if (loadWatchdog) { clearTimeout(loadWatchdog); loadWatchdog = null; }
+
+    const confirmBtn = document.getElementById("confirmBtn");
+    const skipBtn = document.getElementById("skipBtn");
+    const spinner = document.getElementById("loadingSpinner");
+    confirmBtn.disabled = true;
+    skipBtn.disabled = true;               // 載入期間連「跳過」都停用
+    document.getElementById("mapHint").textContent = "題目載入中，請稍候…";
+    spinner.textContent = "⏳ 載入街景中…";
+    spinner.classList.remove("hidden");
     document.getElementById("streetPhoto").classList.add("hidden");
     document.getElementById("photoHint").classList.add("hidden");
 
     // 每回合開始重置地圖視角
     map.setView(mapCenter, mapZoom);
 
-    const res = await fetch("/api/question");
-    const data = await res.json();
-    if (data.error) { alert("無法取得街景照片，請稍後再試。"); return; }
+    // 取得題目資訊；此步驟成功後，後端才會登記本回合座標
+    let data;
+    try {
+        const res = await fetch("/api/question");
+        data = await res.json();
+    } catch (e) {
+        spinner.textContent = "❌ 題目載入失敗，請重新整理頁面";
+        return;
+    }
+    if (data.error) {
+        spinner.textContent = "❌ 無法取得街景照片，請重新整理頁面";
+        return;
+    }
 
     currentRound = data.round;
     document.getElementById("roundNum").textContent = currentRound;
@@ -120,17 +144,39 @@ async function loadQuestion() {
         "地區：" + (data.region === "taipei" ? "🏙️ 台北" : "🗺️ 歐洲");
 
     const img = document.getElementById("streetPhoto");
-    img.src = data.image_url;
+
+    // 圖片載入完成 → 題目正式就緒，開放操作並開始計時
     img.onload = () => {
-        document.getElementById("loadingSpinner").classList.add("hidden");
+        if (submitted) return;             // 已先跳過則不再啟動計時
+        if (loadWatchdog) { clearTimeout(loadWatchdog); loadWatchdog = null; }
+        spinner.classList.add("hidden");
         img.classList.remove("hidden");
         document.getElementById("photoHint").classList.remove("hidden");
         document.getElementById("modalPhoto").src = data.image_url;
+        document.getElementById("mapHint").textContent = "點擊地圖放置猜測標記";
+        skipBtn.disabled = false;
+        questionReady = true;
+        startTimer();                      // 圖片就緒才開始倒數，載入時間不計入 60 秒
     };
+
+    // 圖片載入失敗 → 本回合已登記，開放跳過
     img.onerror = () => {
-        document.getElementById("loadingSpinner").textContent = "❌ 圖片載入失敗，請跳過此題";
+        if (loadWatchdog) { clearTimeout(loadWatchdog); loadWatchdog = null; }
+        spinner.textContent = "❌ 圖片載入失敗，請按「跳過」換下一題";
+        skipBtn.disabled = false;
+        questionReady = true;
     };
-    startTimer();
+
+    // 看門狗：圖片載入過久時先開放「跳過」，避免玩家卡死（本回合已登記，跳過為合法操作）
+    loadWatchdog = setTimeout(() => {
+        if (submitted || img.complete) return;
+        spinner.textContent = "⏳ 街景載入較久，可按「跳過」換下一題";
+        skipBtn.disabled = false;
+        questionReady = true;
+    }, LOAD_TIMEOUT_MS);
+
+    // 先綁定 onload/onerror 再設定 src，避免快取圖片不觸發 onload
+    img.src = data.image_url;
 }
 
 function startTimer() {
@@ -174,8 +220,9 @@ function startTimer() {
 }
 
 async function submitAnswer(skipped = false) {
-    if (submitted) return;
+    if (submitted || !questionReady) return;   // 題目未就緒前禁止送出／跳過
     submitted = true;
+    if (loadWatchdog) { clearTimeout(loadWatchdog); loadWatchdog = null; }
     clearInterval(timerInterval);
     document.getElementById("confirmBtn").disabled = true;
     const body = skipped
