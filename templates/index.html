@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>GeoMapper — 地理猜謎遊戲</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="start-page">
+  <div class="start-card">
+    <h1>🌍 GeoMapper</h1>
+    <p class="subtitle">觀看真實街景照片，猜出拍攝地點！</p>
+    <div class="region-selector">
+      <label class="region-btn selected" id="btn-taipei">
+        <input type="radio" name="region" value="taipei" checked>
+        <span>🏙️ 台北模式</span>
+        <small>難度：簡單</small>
+      </label>
+      <label class="region-btn" id="btn-europe">
+        <input type="radio" name="region" value="europe">
+        <span>🗺️ 歐洲模式</span>
+        <small>難度：困難</small>
+      </label>
+    </div>
+    <div class="rules">
+      <h3>遊戲規則</h3>
+      <ul>
+        <li>🔄 共 5 回合，每回合展示一張街景照片</li>
+        <li>📍 在左側地圖點擊猜測拍攝地點</li>
+        <li>⏱️ 每回合 60 秒倒數，時間到自動送出</li>
+        <li>🔍 地圖縮放限制於 Zoom 10（避免看到地名）</li>
+        <li>🏆 每回合最高 10,000 分，共 50,000 分</li>
+      </ul>
+    </div>
+    <button class="btn-start" id="startBtn">🚀 開始遊戲</button>
+    <div class="history-link">
+      <a href="#" id="showHistory">📊 查看歷史紀錄</a>
+    </div>
+    <div id="historyPanel" class="history-panel hidden"></div>
+  </div>
+  <script>
+    document.querySelectorAll(".region-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".region-btn").forEach(b => b.classList.remove("selected"));
+        btn.classList.add("selected");
+      });
+    });
+    document.getElementById("startBtn").addEventListener("click", async () => {
+      const region = document.querySelector("input[name=region]:checked").value;
+      await fetch("/api/start", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({region})
+      });
+      window.location.href = "/game";
+    });
+    document.getElementById("showHistory").addEventListener("click", async (e) => {
+      e.preventDefault();
+      const panel = document.getElementById("historyPanel");
+      if (!panel.classList.contains("hidden")) { panel.classList.add("hidden"); return; }
+      const res = await fetch("/api/history");
+      const data = await res.json();
+      if (!data.length) { panel.innerHTML = "<p>尚無紀錄</p>"; }
+      else {
+        panel.innerHTML = data.reverse().map((r, i) =>
+          `<div class="hist-row"><b>#${data.length-i}</b> ${r.region === "taipei" ? "台北" : "歐洲"} ─
+           總分 <b>${r.total}</b> ─ 等級 <span class="grade grade-${r.grade}">${r.grade}</span></div>`
+        ).join("");
+      }
+      panel.classList.remove("hidden");
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>GeoMapper — 遊戲中</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="game-page">
+
+<header class="topbar">
+  <div class="logo">🌍 GeoMapper</div>
+  <div class="round-info">回合 <span id="roundNum">1</span> / 5</div>
+  <div class="timer-wrap">⏱️ <span id="timer">60</span>s</div>
+  <div class="score-display">本局得分：<span id="totalScore">0</span></div>
+</header>
+
+<div class="game-layout">
+  <div class="map-panel">
+    <div id="map"></div>
+    <div class="map-hint" id="mapHint">點擊地圖放置猜測標記</div>
+    <div class="map-buttons">
+      <button class="btn-confirm" id="confirmBtn" disabled>✅ 確認答案</button>
+      <button class="btn-skip" id="skipBtn">⏭️ 跳過</button>
+    </div>
+  </div>
+  <div class="photo-panel">
+    <div class="photo-header"><span id="regionLabel">地區：—</span></div>
+    <div class="photo-wrap">
+      <div class="loading-spinner" id="loadingSpinner">⏳ 載入街景中…</div>
+      <img id="streetPhoto" src="" alt="街景照片" class="hidden"
+           onclick="document.getElementById('photoModal').classList.remove('hidden')">
+      <div class="photo-hint hidden" id="photoHint">點擊照片可放大檢視</div>
+    </div>
+    <div class="round-scores" id="roundScores"></div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="resultOverlay">
+  <div class="result-card">
+    <h2 id="resultTitle">回合結果</h2>
+    <div id="resultMap" style="width:100%;height:300px;border-radius:8px;"></div>
+    <p id="resultDist"></p>
+    <p id="resultScore"></p>
+    <button class="btn-next" id="nextBtn">下一回合 ▶</button>
+  </div>
+</div>
+
+<div class="overlay hidden" id="finalOverlay">
+  <div class="result-card final-card">
+    <h2>🏁 遊戲結束！</h2>
+    <div id="finalScores"></div>
+    <div class="total-row">總分：<span id="finalTotal"></span> / 50000</div>
+    <div class="grade-display" id="gradeDisplay"></div>
+    <button class="btn-start" onclick="window.location.href='/'">🔄 再玩一次</button>
+  </div>
+</div>
+
+<div class="modal hidden" id="photoModal" onclick="this.classList.add('hidden')">
+  <img id="modalPhoto" src="" alt="放大街景">
+  <p style="color:#fff;margin-top:8px;">點擊任意處關閉</p>
+</div>
+
+<script src="/static/js/game.js"></script>
+</body>
+</html>

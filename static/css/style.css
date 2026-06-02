@@ -1,0 +1,93 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', sans-serif; background: #0d1117; color: #e6edf3; min-height: 100vh; }
+a { color: #58a6ff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.start-page { display: flex; justify-content: center; align-items: center; padding: 40px 16px; }
+.start-card { background: #161b22; border-radius: 16px; padding: 40px 48px; max-width: 580px; width: 100%; text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,.5); }
+.start-card h1 { font-size: 2.8rem; margin-bottom: 6px; }
+.subtitle { color: #8b949e; margin-bottom: 28px; font-size: 1.05rem; }
+
+.region-selector { display: flex; gap: 16px; justify-content: center; margin-bottom: 24px; }
+.region-btn { cursor: pointer; border: 2px solid #30363d; border-radius: 12px; padding: 16px 24px; display: flex; flex-direction: column; align-items: center; gap: 4px; transition: border-color .2s, background .2s; }
+.region-btn input { display: none; }
+.region-btn span { font-size: 1.1rem; font-weight: 600; }
+.region-btn small { color: #8b949e; font-size: .82rem; }
+.region-btn.selected { border-color: #1f6feb; background: #1a2332; }
+.region-btn:hover { border-color: #388bfd; }
+
+.rules { background: #0d1117; border-radius: 10px; padding: 16px 20px; text-align: left; margin-bottom: 24px; }
+.rules h3 { margin-bottom: 10px; color: #58a6ff; }
+.rules ul { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.rules li { font-size: .92rem; color: #c9d1d9; }
+
+.btn-start { background: #1f6feb; color: #fff; border: none; border-radius: 10px; padding: 14px 40px; font-size: 1.1rem; font-weight: 700; cursor: pointer; transition: background .2s; width: 100%; }
+.btn-start:hover { background: #388bfd; }
+
+.history-link { margin-top: 16px; font-size: .88rem; }
+.history-panel { margin-top: 14px; max-height: 200px; overflow-y: auto; background: #0d1117; border-radius: 8px; padding: 10px; text-align: left; }
+.history-panel.hidden { display: none; }
+.hist-row { padding: 6px 0; border-bottom: 1px solid #21262d; font-size: .9rem; }
+
+.grade { font-weight: 900; }
+.grade-S { color: #f1c40f; }
+.grade-A { color: #2ecc71; }
+.grade-B { color: #3498db; }
+.grade-C { color: #95a5a6; }
+
+.topbar { display: flex; align-items: center; justify-content: space-between; background: #161b22; border-bottom: 1px solid #21262d; padding: 10px 20px; height: 52px; position: sticky; top: 0; z-index: 900; }
+.logo { font-size: 1.2rem; font-weight: 700; }
+.round-info { font-size: 1rem; color: #8b949e; }
+.timer-wrap { font-size: 1.1rem; font-weight: 700; min-width: 70px; text-align: center; }
+.score-display { font-size: .95rem; color: #58a6ff; }
+
+.game-page { height: 100vh; display: flex; flex-direction: column; }
+.game-layout { flex: 1; display: flex; overflow: hidden; }
+.map-panel { flex: 0 0 42%; display: flex; flex-direction: column; border-right: 1px solid #21262d; }
+#map { flex: 1; }
+.map-hint { background: rgba(13,17,23,.85); text-align: center; padding: 5px 10px; font-size: .82rem; color: #8b949e; }
+.map-buttons { display: flex; gap: 10px; padding: 10px 14px; background: #161b22; }
+
+.photo-panel { flex: 1; display: flex; flex-direction: column; background: #0d1117; overflow: hidden; }
+.photo-header { padding: 8px 14px; background: #161b22; border-bottom: 1px solid #21262d; font-size: .88rem; color: #8b949e; }
+.photo-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
+#streetPhoto { max-width: 100%; max-height: 100%; object-fit: contain; cursor: zoom-in; }
+.photo-hint { font-size: .78rem; color: #8b949e; padding: 4px; }
+.loading-spinner { font-size: 1rem; color: #8b949e; padding: 20px; }
+
+.round-scores { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 14px; background: #161b22; border-top: 1px solid #21262d; }
+.rs-chip { background: #21262d; border-radius: 20px; padding: 3px 10px; font-size: .8rem; }
+
+.btn-confirm { flex: 1; background: #238636; color: #fff; border: none; border-radius: 8px; padding: 10px; font-size: .95rem; font-weight: 600; cursor: pointer; transition: background .2s; }
+.btn-confirm:hover:not(:disabled) { background: #2ea043; }
+.btn-confirm:disabled { background: #21262d; color: #8b949e; cursor: not-allowed; }
+.btn-skip { background: #21262d; color: #e6edf3; border: 1px solid #30363d; border-radius: 8px; padding: 10px 16px; font-size: .9rem; cursor: pointer; transition: background .2s; }
+.btn-skip:hover { background: #30363d; }
+
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.overlay.hidden { display: none; }
+.result-card { background: #161b22; border-radius: 16px; padding: 28px 32px; width: 680px; max-width: 96vw; box-shadow: 0 10px 40px rgba(0,0,0,.6); display: flex; flex-direction: column; gap: 14px; }
+.result-card h2 { text-align: center; font-size: 1.4rem; }
+.result-card p { text-align: center; font-size: 1rem; }
+.btn-next { align-self: center; background: #1f6feb; color: #fff; border: none; border-radius: 10px; padding: 11px 32px; font-size: 1rem; font-weight: 700; cursor: pointer; transition: background .2s; }
+.btn-next:hover { background: #388bfd; }
+
+.final-card { max-width: 440px; }
+.final-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #21262d; font-size: .95rem; }
+.total-row { font-size: 1.3rem; font-weight: 700; text-align: center; margin-top: 8px; }
+.grade-display { text-align: center; padding: 8px 0; }
+
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.9); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 2000; cursor: zoom-out; }
+.modal.hidden { display: none; }
+.modal img { max-width: 94vw; max-height: 88vh; border-radius: 8px; }
+
+.hidden { display: none !important; }
+.guess-pin { font-size: 28px; line-height: 1; }
+
+@media (max-width: 700px) {
+  .game-layout { flex-direction: column; }
+  .map-panel { flex: 0 0 50vh; border-right: none; border-bottom: 1px solid #21262d; }
+  .topbar { flex-wrap: wrap; height: auto; gap: 4px; }
+  .start-card { padding: 24px 20px; }
+  .region-selector { flex-direction: column; }
+}
