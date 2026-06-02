@@ -13,6 +13,14 @@ const MAX_ROUNDS = 5;
 const TIMER_SECS = 60;
 const MAX_ZOOM = 20;
 
+// [修正] 經度正規化：Leaflet 地圖會水平無限循環，玩家在「重複出現的世界」上
+// 點擊時，lng 可能超出 [-180, 180]（例如 380、-200）。若不正規化，結算地圖
+// 的 fitBounds 會誤判為橫跨整個地球而把地圖縮到最小，造成視圖渲染錯誤。
+// 此函式把任意經度換算回標準的 [-180, 180] 範圍。
+function normalizeLon(lon) {
+  return ((lon + 180) % 360 + 360) % 360 - 180;
+}
+
 const map = L.map("map", { center: [20, 0], zoom: 2, maxZoom: MAX_ZOOM });
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   attribution: "© OpenStreetMap contributors",
@@ -24,7 +32,9 @@ map.on("zoomend", () => { if (map.getZoom() > MAX_ZOOM) map.setZoom(MAX_ZOOM); }
 map.on("click", (e) => {
   if (submitted) return;
   guessLat = e.latlng.lat;
-  guessLon = e.latlng.lng;
+  // [修正] 在來源端就把點擊到的經度正規化回 [-180, 180]，
+  // 確保存入、送往後端、以及後續結算地圖使用的都是乾淨的座標。
+  guessLon = normalizeLon(e.latlng.lng);
   if (guessMarker) {
     guessMarker.setLatLng(e.latlng);
   } else {
@@ -116,8 +126,11 @@ function showResult(data) {
 
   if (resultLeaflet) { resultLeaflet.remove(); resultLeaflet = null; }
 
-  const trueLL = [data.true_lat, data.true_lon];
-  const guessLL = data.skipped ? trueLL : [data.guess_lat, data.guess_lon];
+  // [修正] 結算地圖渲染前，對正確位置與猜測位置的經度再做一次防禦性正規化，
+  // 避免任一端經度落在 [-180, 180] 之外，使下方 fitBounds 計算出錯誤的超大範圍
+  // 而把地圖縮到最小（即原本的視圖渲染錯誤）。
+  const trueLL = [data.true_lat, normalizeLon(data.true_lon)];
+  const guessLL = data.skipped ? trueLL : [data.guess_lat, normalizeLon(data.guess_lon)];
 
   resultLeaflet = L.map("resultMap", { zoomControl: true });
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
