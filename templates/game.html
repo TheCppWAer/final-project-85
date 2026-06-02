@@ -12,7 +12,6 @@
 <header class="topbar">
   <div class="logo">🌍 GeoMapper</div>
   <div class="round-info">回合 <span id="roundNum">1</span> / 5</div>
-  <div class="timer-wrap">⏱️ <span id="timer">60</span>s</div>
   <div class="score-display">本局得分：<span id="totalScore">0</span></div>
 </header>
 
@@ -25,16 +24,23 @@
       <button class="btn-skip" id="skipBtn">⏭️ 跳過</button>
     </div>
   </div>
-  <div class="photo-panel">
-    <div class="photo-header"><span id="regionLabel">地區：—</span></div>
-    <div class="photo-wrap">
-      <div class="loading-spinner" id="loadingSpinner">⏳ 載入街景中…</div>
-      <img id="streetPhoto" src="" alt="街景照片" class="hidden"
-           onclick="document.getElementById('photoModal').classList.remove('hidden')">
-      <div class="photo-hint hidden" id="photoHint">點擊照片可放大檢視</div>
+<div class="photo-panel">
+  <!-- 計時器疊在照片區域頂部，置中顯示 -->
+  <div class="photo-timer">
+    <span class="photo-timer-text">⏱️ <span id="timer">60</span>s</span>
+    <div class="timer-bar-bg">
+      <div class="timer-bar" id="timerBar"></div>
     </div>
-    <div class="round-scores" id="roundScores"></div>
   </div>
+
+  <div class="photo-header"><span id="regionLabel">地區：—</span></div>
+  <div class="photo-wrap">
+    <div class="loading-spinner" id="loadingSpinner">⏳ 載入街景中…</div>
+    <img id="streetPhoto" src="" alt="街景照片" class="hidden"
+         onclick="document.getElementById('photoModal').classList.remove('hidden')">
+    <div class="photo-hint hidden" id="photoHint">點擊照片可放大檢視</div>
+  </div>
+  <div class="round-scores" id="roundScores"></div>
 </div>
 
 <div class="overlay hidden" id="resultOverlay">
@@ -46,7 +52,6 @@
     <button class="btn-next" id="nextBtn">下一回合 ▶</button>
   </div>
 </div>
-
 <div class="overlay hidden" id="finalOverlay">
   <div class="result-card final-card">
     <h2>🏁 遊戲結束！</h2>

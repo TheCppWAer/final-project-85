@@ -91,3 +91,37 @@ a:hover { text-decoration: underline; }
   .start-card { padding: 24px 20px; }
   .region-selector { flex-direction: column; }
 }
+/* ── 照片區計時器：置中在 photo-panel 頂部 ── */
+.photo-timer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 16px 6px;
+  background: #161b22;
+  border-bottom: 1px solid #21262d;
+}
+
+.photo-timer-text {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #e6edf3;
+}
+
+/* 計量條背景槽，撐滿 photo-panel 寬度 */
+.timer-bar-bg {
+  width: 80%;
+  height: 7px;
+  background: #21262d;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+/* 計量條本體 */
+.timer-bar {
+  height: 100%;
+  width: 100%;
+  background: #2ea043;
+  border-radius: 4px;
+  transition: width 0.9s linear, background 0.3s ease;
+}
