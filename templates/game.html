@@ -38,9 +38,8 @@
 
   <div class="photo-header"><span id="regionLabel">地區：—</span></div>
   <div class="photo-wrap">
-    <div class="loading-spinner" id="loadingSpinner">⏳ 載入街景中…</div>
-    <img id="streetPhoto" src="" alt="街景照片" class="hidden"
-         onclick="document.getElementById('photoModal').classList.remove('hidden')">
+    <div class="loading-spinner" id="loadingSpinner">⏳ loading…</div>
+    <img id="streetPhoto" src="" alt="街景照片" class="hidden">
     <!-- 360 全景檢視器：僅在抽到全景圖時顯示 -->
     <div id="panoViewer" class="hidden"></div>
     <div class="photo-hint hidden" id="photoHint">點擊照片可放大檢視</div>
@@ -65,11 +64,6 @@
     <div class="grade-display" id="gradeDisplay"></div>
     <button class="btn-start" onclick="window.location.href='/'">🔄 再玩一次</button>
   </div>
-</div>
-
-<div class="modal hidden" id="photoModal" onclick="this.classList.add('hidden')">
-  <img id="modalPhoto" src="" alt="放大街景">
-  <p style="color:#fff;margin-top:8px;">點擊任意處關閉</p>
 </div>
 
 <script src="/static/js/game.js"></script>

@@ -10,6 +10,12 @@ let submitted = false;
 let resultLeaflet = null;
 let panoViewer = null;   // 360 全景檢視器實例（Pannellum），非全景題目時為 null
 
+// classic 圖的滾輪縮放／拖曳平移狀態
+let zoomScale = 1;       // 目前縮放倍率（1 = 原始大小）
+let zoomX = 0, zoomY = 0; // 平移位移（px，相對照片區中心）
+let isPanning = false;   // 是否正在拖曳平移
+let panStartX = 0, panStartY = 0;
+
 // 題目是否已就緒（題目資訊回來且圖片載入完成）。未就緒前禁止送出／跳過。
 let questionReady = false;
 // 圖片載入看門狗計時器
@@ -105,6 +111,77 @@ async function startGame() {
     loadQuestion();
 }
 
+// ── classic 圖：滑鼠滾輪縮放 + 拖曳平移（取代原本點擊放大彈窗）──
+function applyZoom() {
+    const img = document.getElementById("streetPhoto");
+    img.style.transform = `translate(${zoomX}px, ${zoomY}px) scale(${zoomScale})`;
+    img.style.cursor = zoomScale > 1 ? (isPanning ? "grabbing" : "grab") : "zoom-in";
+}
+
+function resetZoom() {
+    zoomScale = 1; zoomX = 0; zoomY = 0; isPanning = false;
+    const img = document.getElementById("streetPhoto");
+    if (img) { img.style.transform = ""; img.style.cursor = "zoom-in"; }
+}
+
+// 限制平移範圍，避免把圖片拖到完全離開可視區
+function clampZoom(rect) {
+    if (zoomScale <= 1) { zoomX = 0; zoomY = 0; return; }
+    const maxX = (zoomScale - 1) * rect.width / 2;
+    const maxY = (zoomScale - 1) * rect.height / 2;
+    zoomX = Math.max(-maxX, Math.min(maxX, zoomX));
+    zoomY = Math.max(-maxY, Math.min(maxY, zoomY));
+}
+
+// 只需在頁面載入時綁定一次（#streetPhoto 元素整局共用）
+function setupClassicZoom() {
+    const img = document.getElementById("streetPhoto");
+    const wrap = img.parentElement;   // .photo-wrap
+
+    // 滾輪：以游標為中心縮放
+    img.addEventListener("wheel", (e) => {
+        if (img.classList.contains("hidden")) return;   // 全景題目不處理
+        e.preventDefault();
+        const rect = wrap.getBoundingClientRect();
+        const cx = e.clientX - (rect.left + rect.width / 2);
+        const cy = e.clientY - (rect.top + rect.height / 2);
+        const prev = zoomScale;
+        const factor = e.deltaY < 0 ? 1.2 : 1 / 1.2;    // 向上放大、向下縮小
+        zoomScale = Math.min(6, Math.max(1, zoomScale * factor));
+        const ratio = zoomScale / prev;
+        // 讓游標下的位置在縮放後維持不動
+        zoomX = cx * (1 - ratio) + zoomX * ratio;
+        zoomY = cy * (1 - ratio) + zoomY * ratio;
+        clampZoom(rect);
+        applyZoom();
+    }, { passive: false });
+
+    // 拖曳平移（僅放大後）
+    img.addEventListener("pointerdown", (e) => {
+        if (img.classList.contains("hidden") || zoomScale <= 1) return;
+        isPanning = true;
+        panStartX = e.clientX - zoomX;
+        panStartY = e.clientY - zoomY;
+        try { img.setPointerCapture(e.pointerId); } catch (x) {}
+        applyZoom();
+    });
+    img.addEventListener("pointermove", (e) => {
+        if (!isPanning) return;
+        zoomX = e.clientX - panStartX;
+        zoomY = e.clientY - panStartY;
+        clampZoom(wrap.getBoundingClientRect());
+        applyZoom();
+    });
+    const endPan = (e) => {
+        if (!isPanning) return;
+        isPanning = false;
+        try { img.releasePointerCapture(e.pointerId); } catch (x) {}
+        applyZoom();
+    };
+    img.addEventListener("pointerup", endPan);
+    img.addEventListener("pointercancel", endPan);
+}
+
 // ── 銷毀上一回合的 360 全景檢視器，並隱藏其容器 ──────────
 function destroyPano() {
     if (panoViewer) {
@@ -127,6 +204,7 @@ async function loadQuestion() {
     if (devAnswerMarker) { map.removeLayer(devAnswerMarker); devAnswerMarker = null; }
     if (loadWatchdog) { clearTimeout(loadWatchdog); loadWatchdog = null; }
     destroyPano();                          // 清除上一回合的全景檢視器
+    resetZoom();                            // 重置上一回合 classic 圖的縮放/平移
 
     const confirmBtn = document.getElementById("confirmBtn");
     const skipBtn = document.getElementById("skipBtn");
@@ -134,7 +212,7 @@ async function loadQuestion() {
     confirmBtn.disabled = true;
     skipBtn.disabled = true;               // 載入期間連「跳過」都停用
     document.getElementById("mapHint").textContent = "題目載入中，請稍候…";
-    spinner.textContent = "⏳ 載入街景中…";
+    spinner.textContent = "⏳ loading…";
     spinner.classList.remove("hidden");
     document.getElementById("streetPhoto").classList.add("hidden");
     document.getElementById("photoHint").classList.add("hidden");
@@ -188,6 +266,7 @@ async function loadQuestion() {
     const failLoading = (msg) => {
         if (loadWatchdog) { clearTimeout(loadWatchdog); loadWatchdog = null; }
         spinner.textContent = msg;
+        spinner.classList.remove("hidden");   // 確保錯誤訊息可見（全景題目時 spinner 原本已隱藏）
         skipBtn.disabled = false;
         questionReady = true;
     };
@@ -208,6 +287,9 @@ async function loadQuestion() {
         img.classList.add("hidden");
         const panoDiv = document.getElementById("panoViewer");
         panoDiv.classList.remove("hidden");   // 必須先顯示，Pannellum 才能取得正確尺寸
+        // 全景題目改由 Pannellum 自帶的載入指示器顯示進度，
+        // 因此隱藏自訂的「loading」spinner，避免兩個 loading 文字重疊。
+        spinner.classList.add("hidden");
         panoViewer = pannellum.viewer("panoViewer", {
             type: "equirectangular",
             panorama: "/api/proxy?url=" + encodeURIComponent(data.image_url),
@@ -225,8 +307,7 @@ async function loadQuestion() {
         document.getElementById("panoViewer").classList.add("hidden");
         img.onload = () => {
             img.classList.remove("hidden");   // 顯示圖片（先前重構時漏掉，導致畫面全黑）
-            finishReady("點擊照片可放大檢視");
-            document.getElementById("modalPhoto").src = data.image_url;
+            finishReady("🖱️ 滾輪縮放，放大後可拖曳平移");
         };
         img.onerror = () => failLoading("❌ 圖片載入失敗，請按「跳過」換下一題");
         // 先綁定 onload/onerror 再設定 src，避免快取圖片不觸發 onload
@@ -363,4 +444,5 @@ document.getElementById("confirmBtn").addEventListener("click", () => submitAnsw
 document.getElementById("skipBtn").addEventListener("click", () => submitAnswer(true));
 
 // v1 ── 頁面載入時啟動遊戲 ──
+setupClassicZoom();   // 綁定 classic 圖的滾輪縮放/拖曳事件（只需一次）
 startGame();
