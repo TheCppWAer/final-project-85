@@ -1,6 +1,7 @@
 import math, random, requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from flask import Flask, render_template, jsonify, request, session
+from urllib.parse import urlparse
+from flask import Flask, render_template, jsonify, request, session, Response, abort
 
 app = Flask(__name__)
 app.secret_key = "geomapper_secret_2024"
@@ -59,6 +60,31 @@ def calc_score(dist_km, region="taipei"):
     scale = SCORE_SCALE.get(region, SCORE_SCALE["taipei"])
     return max(0, round(10000 * math.exp(-SCORE_K * dist_km / scale)))
 
+# ── 判斷圖片是否為 360 全景（equirectangular）──────────────
+# Panoramax 的 STAC item 在 properties["pers:interior_orientation"] 內提供：
+#   field_of_view          → 全景為 360，一般街景約 50~90
+#   sensor_array_dimensions → 全景長寬比約 2:1（如 5760x2880）
+# 優先信任 field_of_view，缺值時再用 2:1 長寬比作為後備判斷。
+def detect_is_360(props):
+    pio = props.get("pers:interior_orientation") or {}
+
+    fov = pio.get("field_of_view")
+    if fov is not None:
+        try:
+            return float(fov) >= 359
+        except (TypeError, ValueError):
+            pass
+
+    dims = pio.get("sensor_array_dimensions")
+    if isinstance(dims, (list, tuple)) and len(dims) == 2 and dims[1]:
+        try:
+            ratio = float(dims[0]) / float(dims[1])
+            return 1.9 <= ratio <= 2.1
+        except (TypeError, ValueError, ZeroDivisionError):
+            pass
+
+    return False
+
 # ── 檢查候選圖片是否與已用過的座標距離夠遠 ─────────────
 def is_far_enough(lat, lon, used_coords, region):
     min_dist = MIN_DIST_KM.get(region, 1.0)
@@ -108,7 +134,9 @@ def _try_fetch_one(bbox):
             if not img_url:
                 continue
 
-            return {"image_url": img_url, "lat": lat, "lon": lon, "id": item.get("id", "")}
+            is_360 = detect_is_360(item.get("properties", {}))
+            return {"image_url": img_url, "lat": lat, "lon": lon,
+                    "id": item.get("id", ""), "is_360": is_360}
     except Exception:
         return None
 
@@ -215,7 +243,8 @@ def api_question():
     session["round"] = rnd + 1
     session["rounds"] = rounds
 
-    resp = {"round": rnd + 1, "image_url": item["image_url"], "region": region}
+    resp = {"round": rnd + 1, "image_url": item["image_url"], "region": region,
+            "is_360": bool(item.get("is_360", False))}
     # 開發測試模式：附帶正確答案座標，前端會直接標示
     if DEV_SHOW_ANSWER:
         resp["answer_lat"] = item["lat"]
@@ -268,6 +297,35 @@ def api_finish():
 @app.route("/api/history", methods=["GET"])
 def api_history():
     return jsonify(score_history[-20:])
+
+# ── API：圖片代理 ────────────────────────────────────────
+# 360 全景需以 WebGL 貼圖呈現，瀏覽器要求影像來源為同源或允許 CORS。
+# Panoramax 各實例的圖床不保證提供 CORS 標頭，因此全景圖一律透過此
+# 代理以「同源」方式載入，避免 WebGL 因跨域而貼圖失敗（黑畫面）。
+# 為避免 SSRF，只允許 https 且網域含 "panoramax" 的圖床。
+def _is_allowed_image_url(url):
+    try:
+        u = urlparse(url)
+    except Exception:
+        return False
+    if u.scheme != "https" or not u.netloc:
+        return False
+    return "panoramax" in u.netloc.lower()
+
+@app.route("/api/proxy", methods=["GET"])
+def api_proxy():
+    url = request.args.get("url", "")
+    if not _is_allowed_image_url(url):
+        abort(400)
+    try:
+        r = http_session.get(url, timeout=15, stream=True)
+        r.raise_for_status()
+    except Exception:
+        abort(502)
+    content_type = r.headers.get("Content-Type", "image/jpeg")
+    resp = Response(r.iter_content(chunk_size=64 * 1024), content_type=content_type)
+    resp.headers["Cache-Control"] = "public, max-age=3600"
+    return resp
 
 if __name__ == "__main__":
     app.run(debug=True)

@@ -8,6 +8,7 @@ let totalScore = 0;
 let roundScores = [];
 let submitted = false;
 let resultLeaflet = null;
+let panoViewer = null;   // 360 全景檢視器實例（Pannellum），非全景題目時為 null
 
 // 題目是否已就緒（題目資訊回來且圖片載入完成）。未就緒前禁止送出／跳過。
 let questionReady = false;
@@ -104,6 +105,19 @@ async function startGame() {
     loadQuestion();
 }
 
+// ── 銷毀上一回合的 360 全景檢視器，並隱藏其容器 ──────────
+function destroyPano() {
+    if (panoViewer) {
+        try { panoViewer.destroy(); } catch (e) { /* 忽略重複銷毀 */ }
+        panoViewer = null;
+    }
+    const panoDiv = document.getElementById("panoViewer");
+    if (panoDiv) {
+        panoDiv.classList.add("hidden");
+        panoDiv.innerHTML = "";
+    }
+}
+
 async function loadQuestion() {
     submitted = false;
     questionReady = false;                 // 題目尚未就緒 → 禁止送出／跳過
@@ -112,6 +126,7 @@ async function loadQuestion() {
     if (guessMarker) { map.removeLayer(guessMarker); guessMarker = null; }
     if (devAnswerMarker) { map.removeLayer(devAnswerMarker); devAnswerMarker = null; }
     if (loadWatchdog) { clearTimeout(loadWatchdog); loadWatchdog = null; }
+    destroyPano();                          // 清除上一回合的全景檢視器
 
     const confirmBtn = document.getElementById("confirmBtn");
     const skipBtn = document.getElementById("skipBtn");
@@ -155,40 +170,68 @@ async function loadQuestion() {
             `　🛠️ 答案：${data.answer_lat.toFixed(4)}, ${data.answer_lon.toFixed(4)}`;
     }
 
-    const img = document.getElementById("streetPhoto");
-
-    // 圖片載入完成 → 題目正式就緒，開放操作並開始計時
-    img.onload = () => {
+    // 共用：題目內容（圖片或全景）就緒後 → 開放操作並開始倒數
+    const finishReady = (hintText) => {
         if (submitted) return;             // 已先跳過則不再啟動計時
         if (loadWatchdog) { clearTimeout(loadWatchdog); loadWatchdog = null; }
         spinner.classList.add("hidden");
-        img.classList.remove("hidden");
-        document.getElementById("photoHint").classList.remove("hidden");
-        document.getElementById("modalPhoto").src = data.image_url;
+        const hint = document.getElementById("photoHint");
+        hint.textContent = hintText;
+        hint.classList.remove("hidden");
         document.getElementById("mapHint").textContent = "點擊地圖放置猜測標記";
         skipBtn.disabled = false;
         questionReady = true;
-        startTimer();                      // 圖片就緒才開始倒數，載入時間不計入 60 秒
+        startTimer();                      // 內容就緒才開始倒數，載入時間不計入 60 秒
     };
 
-    // 圖片載入失敗 → 本回合已登記，開放跳過
-    img.onerror = () => {
+    // 共用：載入失敗 → 本回合已登記，開放跳過
+    const failLoading = (msg) => {
         if (loadWatchdog) { clearTimeout(loadWatchdog); loadWatchdog = null; }
-        spinner.textContent = "❌ 圖片載入失敗，請按「跳過」換下一題";
+        spinner.textContent = msg;
         skipBtn.disabled = false;
         questionReady = true;
     };
 
-    // 看門狗：圖片載入過久時先開放「跳過」，避免玩家卡死（本回合已登記，跳過為合法操作）
+    // 看門狗：載入過久時先開放「跳過」，避免玩家卡死（本回合已登記，跳過為合法操作）
     loadWatchdog = setTimeout(() => {
-        if (submitted || img.complete) return;
+        if (submitted || questionReady) return;
         spinner.textContent = "⏳ 街景載入較久，可按「跳過」換下一題";
         skipBtn.disabled = false;
         questionReady = true;
     }, LOAD_TIMEOUT_MS);
 
-    // 先綁定 onload/onerror 再設定 src，避免快取圖片不觸發 onload
-    img.src = data.image_url;
+    const img = document.getElementById("streetPhoto");
+
+    if (data.is_360) {
+        // ── 360 全景圖：以 Pannellum 呈現，可拖曳旋轉、滾輪縮放 ──
+        // 透過後端 /api/proxy 同源載入，避免 WebGL 因跨域貼圖失敗（黑畫面）。
+        img.classList.add("hidden");
+        const panoDiv = document.getElementById("panoViewer");
+        panoDiv.classList.remove("hidden");   // 必須先顯示，Pannellum 才能取得正確尺寸
+        panoViewer = pannellum.viewer("panoViewer", {
+            type: "equirectangular",
+            panorama: "/api/proxy?url=" + encodeURIComponent(data.image_url),
+            autoLoad: true,
+            showZoomCtrl: true,
+            showFullscreenCtrl: true,
+            keyboardZoom: false,
+            friction: 0.15,
+            compass: false,
+        });
+        panoViewer.on("load", () => finishReady("🔄 全景圖：拖曳可旋轉視角，滾輪可縮放"));
+        panoViewer.on("error", () => failLoading("❌ 全景圖載入失敗，請按「跳過」換下一題"));
+    } else {
+        // ── 一般街景圖（classic）：維持原本以 <img> 呈現的方式 ──
+        document.getElementById("panoViewer").classList.add("hidden");
+        img.onload = () => {
+            img.classList.remove("hidden");   // 顯示圖片（先前重構時漏掉，導致畫面全黑）
+            finishReady("點擊照片可放大檢視");
+            document.getElementById("modalPhoto").src = data.image_url;
+        };
+        img.onerror = () => failLoading("❌ 圖片載入失敗，請按「跳過」換下一題");
+        // 先綁定 onload/onerror 再設定 src，避免快取圖片不觸發 onload
+        img.src = data.image_url;
+    }
 }
 
 function startTimer() {

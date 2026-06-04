@@ -5,6 +5,9 @@
   <title>GeoMapper — 遊戲中</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Pannellum：用於 360 全景圖的拖曳旋轉檢視 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pannellum/2.5.6/pannellum.css"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pannellum/2.5.6/pannellum.js"></script>
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body class="game-page">
@@ -38,6 +41,8 @@
     <div class="loading-spinner" id="loadingSpinner">⏳ 載入街景中…</div>
     <img id="streetPhoto" src="" alt="街景照片" class="hidden"
          onclick="document.getElementById('photoModal').classList.remove('hidden')">
+    <!-- 360 全景檢視器：僅在抽到全景圖時顯示 -->
+    <div id="panoViewer" class="hidden"></div>
     <div class="photo-hint hidden" id="photoHint">點擊照片可放大檢視</div>
   </div>
   <div class="round-scores" id="roundScores"></div>
