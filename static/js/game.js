@@ -16,6 +16,14 @@ let zoomX = 0, zoomY = 0; // 平移位移（px，相對照片區中心）
 let isPanning = false;   // 是否正在拖曳平移
 let panStartX = 0, panStartY = 0;
 
+// 提示功能（僅歐洲模式）狀態
+let currentRegion = "taipei";   // 本回合地區
+let hintsLeft = 3;              // 整局剩餘提示次數
+let hintUsedThisRound = false;  // 本題是否已成功使用提示
+let hintFailedThisRound = false;// 本題提示是否失敗（顯示「提示失敗」且本題停用）
+let hintMarker = null;          // 地圖上的黃色提示點標記
+let hintToastTimer = null;      // 提示框自動隱藏計時器
+
 // 題目是否已就緒（題目資訊回來且圖片載入完成）。未就緒前禁止送出／跳過。
 let questionReady = false;
 // 圖片載入看門狗計時器
@@ -25,6 +33,11 @@ const MAX_ROUNDS = 5;
 const TIMER_SECS = 60;
 const MAX_ZOOM = 13;
 const LOAD_TIMEOUT_MS = 10000;   // 圖片載入超過此時間 → 開放跳過，避免卡住
+
+// classic 載入畫面：做成與全景（Pannellum）相同的「Loading... + 進度條」外觀
+const LOADING_BOX_HTML =
+    '<div class="lbox-text">Loading...</div>' +
+    '<div class="lbar"><div class="lbar-fill"></div></div>';
 
 // v1 ── 地圖初始中心與縮放改為動態，由後端 /api/start 回傳 ──
 let mapCenter = [25.0330, 121.5654];
@@ -97,6 +110,7 @@ function initMap(center, zoom) {
 async function startGame() {
     const params = new URLSearchParams(window.location.search);
     const region = params.get("region") || "taipei";
+    currentRegion = region;                 // 供提示按鈕初始判斷
 
     const res = await fetch("/api/start", {
         method: "POST",
@@ -182,6 +196,76 @@ function setupClassicZoom() {
     img.addEventListener("pointercancel", endPan);
 }
 
+// ── 提示功能 ─────────────────────────────────────────────
+// 依目前狀態更新提示按鈕（文字、可用性、失敗外觀；台北模式隱藏）
+function refreshHintButton() {
+    const btn = document.getElementById("hintBtn");
+    if (!btn) return;
+    if (currentRegion !== "europe") { btn.classList.add("hidden"); return; }
+    btn.classList.remove("hidden");
+
+    if (hintFailedThisRound) {
+        btn.classList.add("hint-failed");
+        btn.innerHTML = `<span class="bulb">💡</span>提示失敗(${hintsLeft})`;
+        btn.disabled = true;
+        return;
+    }
+    btn.classList.remove("hint-failed");
+    btn.innerHTML = `<span class="bulb">💡</span>提示(${hintsLeft})`;
+    const usable = questionReady && !submitted && !hintUsedThisRound && hintsLeft > 0;
+    btn.disabled = !usable;
+}
+
+// 置中淡紅色提示框，3 秒後自動隱藏
+function showHintToast(msg) {
+    const t = document.getElementById("hintToast");
+    if (!t) return;
+    t.textContent = msg;
+    t.classList.remove("hidden");
+    if (hintToastTimer) clearTimeout(hintToastTimer);
+    hintToastTimer = setTimeout(() => t.classList.add("hidden"), 3000);
+}
+
+// 在猜測地圖放上黃色提示點（點擊顯示車程說明）
+function placeHintMarker(lat, lon, hours) {
+    if (hintMarker) { map.removeLayer(hintMarker); hintMarker = null; }
+    hintMarker = L.marker([lat, lon], {
+        icon: L.divIcon({ className: "", html: "<div style='font-size:26px'>🟡</div>",
+                          iconSize: [26, 26], iconAnchor: [13, 13] })
+    }).bindPopup(`💡 提示點：正確答案大約在此點約 ${hours} 小時車程的範圍內`).addTo(map);
+}
+
+async function useHint() {
+    if (currentRegion !== "europe") return;
+    if (!questionReady || submitted || hintUsedThisRound || hintFailedThisRound || hintsLeft <= 0) return;
+
+    const btn = document.getElementById("hintBtn");
+    btn.disabled = true;
+    btn.innerHTML = `<span class="bulb">💡</span>查詢中…`;
+
+    let data;
+    try {
+        const res = await fetch("/api/hint", { method: "POST" });
+        data = await res.json();
+    } catch (e) {
+        data = { found: false };
+    }
+
+    if (!data || !data.found) {
+        // 失敗（小島無路可達或服務異常）：不扣次數，本題停用，3 秒紅框提示
+        hintFailedThisRound = true;
+        showHintToast("oops，找不到提示點（本次不扣除提示次數）");
+        refreshHintButton();
+        return;
+    }
+
+    // 成功：扣一次提示，放上黃色提示點，本題不再可用
+    hintsLeft -= 1;
+    hintUsedThisRound = true;
+    placeHintMarker(data.lat, data.lon, data.hours);
+    refreshHintButton();
+}
+
 // ── 銷毀上一回合的 360 全景檢視器，並隱藏其容器 ──────────
 function destroyPano() {
     if (panoViewer) {
@@ -205,6 +289,10 @@ async function loadQuestion() {
     if (loadWatchdog) { clearTimeout(loadWatchdog); loadWatchdog = null; }
     destroyPano();                          // 清除上一回合的全景檢視器
     resetZoom();                            // 重置上一回合 classic 圖的縮放/平移
+    if (hintMarker) { map.removeLayer(hintMarker); hintMarker = null; }
+    hintUsedThisRound = false;              // 重置本題提示狀態
+    hintFailedThisRound = false;
+    refreshHintButton();                    // 載入期間先停用提示按鈕
 
     const confirmBtn = document.getElementById("confirmBtn");
     const skipBtn = document.getElementById("skipBtn");
@@ -212,7 +300,7 @@ async function loadQuestion() {
     confirmBtn.disabled = true;
     skipBtn.disabled = true;               // 載入期間連「跳過」都停用
     document.getElementById("mapHint").textContent = "題目載入中，請稍候…";
-    spinner.textContent = "⏳ loading…";
+    spinner.innerHTML = LOADING_BOX_HTML;
     spinner.classList.remove("hidden");
     document.getElementById("streetPhoto").classList.add("hidden");
     document.getElementById("photoHint").classList.add("hidden");
@@ -235,6 +323,8 @@ async function loadQuestion() {
     }
 
     currentRound = data.round;
+    currentRegion = data.region;            // 供提示按鈕判斷是否顯示（僅歐洲）
+    refreshHintButton();
     document.getElementById("roundNum").textContent = currentRound;
     document.getElementById("regionLabel").textContent =
         "地區：" + (data.region === "taipei" ? "🏙️ 台北" : "🗺️ 歐洲");
@@ -259,6 +349,7 @@ async function loadQuestion() {
         document.getElementById("mapHint").textContent = "點擊地圖放置猜測標記";
         skipBtn.disabled = false;
         questionReady = true;
+        refreshHintButton();               // 題目就緒 → 視情況開放提示按鈕
         startTimer();                      // 內容就緒才開始倒數，載入時間不計入 60 秒
     };
 
@@ -366,6 +457,7 @@ async function submitAnswer(skipped = false) {
     if (loadWatchdog) { clearTimeout(loadWatchdog); loadWatchdog = null; }
     clearInterval(timerInterval);
     document.getElementById("confirmBtn").disabled = true;
+    refreshHintButton();                       // 作答送出後停用提示按鈕
     const body = skipped
         ? { lat: 0, lon: 0, skipped: true }
         : { lat: guessLat, lon: guessLon, skipped: false };
@@ -442,6 +534,8 @@ function updateRoundScoresBar() {
 
 document.getElementById("confirmBtn").addEventListener("click", () => submitAnswer(false));
 document.getElementById("skipBtn").addEventListener("click", () => submitAnswer(true));
+document.getElementById("hintBtn").addEventListener("click", useHint);
+refreshHintButton();   // 依初始地區決定提示按鈕是否顯示
 
 // v1 ── 頁面載入時啟動遊戲 ──
 setupClassicZoom();   // 綁定 classic 圖的滾輪縮放/拖曳事件（只需一次）

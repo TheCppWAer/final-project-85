@@ -48,6 +48,16 @@ MAP_VIEW = {
 # 正式上線前務必改回 False，否則玩家可從網路請求看到答案。
 DEV_SHOW_ANSWER = True
 
+# ── 提示功能（僅歐洲模式）：用 OSRM 找一個到答案行車約 5 小時的提示點 ──
+# OSRM 公開 demo 伺服器（有流量限制；正式建議自架或用商用端點）
+OSRM_ROUTE_URL = "https://router.project-osrm.org/route/v1/driving"
+HINT_TARGET_H = 5.0    # 目標行車時間（小時）
+HINT_MIN_H = 2.0       # 可接受下限
+HINT_MAX_H = 8.0       # 可接受上限
+HINT_AVG_KMH = 80.0    # 估算初始半徑用的平均車速
+HINT_MAX_BEARINGS = 6  # 最多嘗試幾個方位
+HINT_MAX_CALLS = 18    # 一次提示最多打幾次 OSRM（保護公開伺服器）
+
 def haversine(lat1, lon1, lat2, lon2):
     R = 6371.0
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
@@ -84,6 +94,59 @@ def detect_is_360(props):
             pass
 
     return False
+
+# ── 由起點沿方位角前進指定距離，求終點座標（大圓 destination point）──
+def _destination_point(lat, lon, bearing_deg, dist_km):
+    R = 6371.0
+    d = dist_km / R
+    th = math.radians(bearing_deg)
+    phi1, lam1 = math.radians(lat), math.radians(lon)
+    phi2 = math.asin(math.sin(phi1) * math.cos(d) +
+                     math.cos(phi1) * math.sin(d) * math.cos(th))
+    lam2 = lam1 + math.atan2(math.sin(th) * math.sin(d) * math.cos(phi1),
+                             math.cos(d) - math.sin(phi1) * math.sin(phi2))
+    out_lat = math.degrees(phi2)
+    out_lon = (math.degrees(lam2) + 540) % 360 - 180   # 正規化到 -180~180
+    return out_lat, out_lon
+
+# ── 用 OSRM 取得 (lat1,lon1)→(lat2,lon2) 的最快開車時間（小時）──
+# 回傳 None 代表無路可達（落海等）或服務失敗。OSRM 座標順序為 lon,lat。
+def _osrm_drive_hours(lat1, lon1, lat2, lon2):
+    url = f"{OSRM_ROUTE_URL}/{lon1},{lat1};{lon2},{lat2}"
+    try:
+        r = http_session.get(url, params={"overview": "false"}, timeout=5)
+        r.raise_for_status()
+        j = r.json()
+        if j.get("code") != "Ok" or not j.get("routes"):
+            return None
+        return j["routes"][0]["duration"] / 3600.0
+    except Exception:
+        return None
+
+# ── 以答案為圓心，找一個到答案行車時間落在 2~8 小時的提示點 ──
+# 隨機方位 + 依結果比例調整半徑逼近目標。找不到回傳 None。
+def find_hint_point(ans_lat, ans_lon):
+    calls = 0
+    for _ in range(HINT_MAX_BEARINGS):
+        if calls >= HINT_MAX_CALLS:
+            break
+        bearing = random.uniform(0, 360)
+        radius = HINT_AVG_KMH * HINT_TARGET_H   # 初始半徑 ≈ 400 km
+        for _ in range(4):
+            if calls >= HINT_MAX_CALLS:
+                break
+            radius = max(30.0, min(1500.0, radius))
+            cand_lat, cand_lon = _destination_point(ans_lat, ans_lon, bearing, radius)
+            hours = _osrm_drive_hours(cand_lat, cand_lon, ans_lat, ans_lon)
+            calls += 1
+            if hours is None:
+                break   # 無路可達 → 換方位
+            if HINT_MIN_H <= hours <= HINT_MAX_H:
+                return {"lat": round(cand_lat, 6), "lon": round(cand_lon, 6),
+                        "hours": round(hours, 1)}
+            # 依比例調整半徑（時間與距離大致成正比）後再試
+            radius = radius * (HINT_TARGET_H / hours)
+    return None
 
 # ── 檢查候選圖片是否與已用過的座標距離夠遠 ─────────────
 def is_far_enough(lat, lon, used_coords, region):
@@ -297,6 +360,27 @@ def api_finish():
 @app.route("/api/history", methods=["GET"])
 def api_history():
     return jsonify(score_history[-20:])
+
+# ── API：提示（僅歐洲模式）──────────────────────────────
+# 以本題答案為圓心，回傳一個到答案行車約 5 小時（可接受 2~8 小時）的提示點。
+# 使用次數限制（每局 3 次、每題 1 次）由前端控制；後端只負責計算。
+@app.route("/api/hint", methods=["POST"])
+def api_hint():
+    region = session.get("region", "taipei")
+    if region != "europe":
+        return jsonify({"found": False, "error": "hint not available"}), 400
+
+    rounds = session.get("rounds", [])
+    rnd_idx = session.get("round", 1) - 1
+    if rnd_idx < 0 or rnd_idx >= len(rounds):
+        return jsonify({"found": False, "error": "bad round index"}), 400
+
+    ans_lat, ans_lon = rounds[rnd_idx]
+    hint = find_hint_point(ans_lat, ans_lon)
+    if hint is None:
+        return jsonify({"found": False})
+    return jsonify({"found": True, "lat": hint["lat"],
+                    "lon": hint["lon"], "hours": hint["hours"]})
 
 # ── API：圖片代理 ────────────────────────────────────────
 # 360 全景需以 WebGL 貼圖呈現，瀏覽器要求影像來源為同源或允許 CORS。

@@ -24,6 +24,7 @@
     <div class="map-hint" id="mapHint">點擊地圖放置猜測標記</div>
     <div class="map-buttons">
       <button class="btn-confirm" id="confirmBtn" disabled>✅ 確認答案</button>
+      <button class="btn-hint hidden" id="hintBtn"><span class="bulb">💡</span>提示(3)</button>
       <button class="btn-skip" id="skipBtn">⏭️ 跳過</button>
     </div>
   </div>
@@ -38,7 +39,10 @@
 
   <div class="photo-header"><span id="regionLabel">地區：—</span></div>
   <div class="photo-wrap">
-    <div class="loading-spinner" id="loadingSpinner">⏳ loading…</div>
+    <div class="loading-spinner" id="loadingSpinner">
+      <div class="lbox-text">Loading...</div>
+      <div class="lbar"><div class="lbar-fill"></div></div>
+    </div>
     <img id="streetPhoto" src="" alt="街景照片" class="hidden">
     <!-- 360 全景檢視器：僅在抽到全景圖時顯示 -->
     <div id="panoViewer" class="hidden"></div>
@@ -65,6 +69,9 @@
     <button class="btn-start" onclick="window.location.href='/'">🔄 再玩一次</button>
   </div>
 </div>
+
+<!-- 提示失敗時置中顯示的淡紅色提示框（3 秒後自動隱藏）-->
+<div class="hint-toast hidden" id="hintToast"></div>
 
 <script src="/static/js/game.js"></script>
 </body>
