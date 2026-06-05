@@ -1,4 +1,4 @@
-import math, random, requests
+import math, random, requests, time, threading, uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse
 from flask import Flask, render_template, jsonify, request, session, Response, abort
@@ -57,6 +57,15 @@ HINT_MAX_H = 8.0       # 可接受上限
 HINT_AVG_KMH = 80.0    # 估算初始半徑用的平均車速
 HINT_MAX_BEARINGS = 6  # 最多嘗試幾個方位
 HINT_MAX_CALLS = 18    # 一次提示最多打幾次 OSRM（保護公開伺服器）
+
+# ── 反向地理編碼（Nominatim）：結算時把座標轉成地名 ──────
+# Nominatim 公開伺服器使用條款要求帶可辨識的 User-Agent、限 1 req/s、勿大量使用。
+# 正式部署建議自架或改用商用端點。
+NOMINATIM_URL = "https://nominatim.openstreetmap.org/reverse"
+NOMINATIM_HEADERS = {"User-Agent": "GeoMapper-game/1.0 (educational final project)"}
+# 遵守 Nominatim 使用政策：限每秒 1 次請求（鎖 + 時間戳節流）
+_nominatim_lock = threading.Lock()
+_nominatim_last = [0.0]
 
 def haversine(lat1, lon1, lat2, lon2):
     R = 6371.0
@@ -147,6 +156,68 @@ def find_hint_point(ans_lat, ans_lon):
             # 依比例調整半徑（時間與距離大致成正比）後再試
             radius = radius * (HINT_TARGET_H / hours)
     return None
+
+# ── 用 Nominatim 反向地理編碼：座標 → 精簡地名（城市, 行政區, 國家）──
+# 查不到或服務失敗回傳 None。
+def reverse_geocode(lat, lon):
+    params = {"format": "jsonv2", "lat": lat, "lon": lon,
+              "zoom": 18, "accept-language": "zh-TW"}
+    with _nominatim_lock:
+        wait = 1.1 - (time.time() - _nominatim_last[0])
+        if wait > 0:
+            time.sleep(wait)          # 與上次請求間隔 >= 1 秒，遵守使用政策
+        try:
+            r = http_session.get(NOMINATIM_URL, params=params,
+                                 headers=NOMINATIM_HEADERS, timeout=6)
+            _nominatim_last[0] = time.time()
+            r.raise_for_status()
+            j = r.json()
+        except Exception:
+            _nominatim_last[0] = time.time()
+            return None
+    if not isinstance(j, dict) or j.get("error"):
+        return None
+
+    addr = j.get("address", {}) or {}
+    road = addr.get("road") or addr.get("pedestrian") or addr.get("footway") \
+        or addr.get("path") or addr.get("neighbourhood")
+    locality = None
+    for k in ("city", "town", "village", "municipality", "hamlet", "suburb", "county"):
+        if addr.get(k):
+            locality = addr[k]
+            break
+    region = addr.get("state") or addr.get("region") or addr.get("province")
+    country = addr.get("country")
+
+    parts = []
+    for p in (road, locality, region, country):
+        if p and p not in parts:
+            parts.append(p)
+    if parts:
+        return ", ".join(parts)
+    return j.get("display_name") or None
+
+# ── 預先反查正確答案地名 ─────────────────────────────────
+# 在題目確定時（/api/question）就背景反查答案地名並暫存，結算時直接取用，
+# 結算階段只需再反查玩家猜測一筆，省去等待。以 session id 區隔不同玩家。
+answer_places = {}                 # {(sid, round_idx): place_or_None}
+answer_places_lock = threading.Lock()
+
+def _get_sid():
+    sid = session.get("sid")
+    if not sid:
+        sid = uuid.uuid4().hex
+        session["sid"] = sid
+    return sid
+
+def _bg_geocode_answer(sid, rnd_idx, lat, lon):
+    place = reverse_geocode(lat, lon)
+    with answer_places_lock:
+        answer_places[(sid, rnd_idx)] = place
+
+def prefetch_answer_place(sid, rnd_idx, lat, lon):
+    threading.Thread(target=_bg_geocode_answer,
+                     args=(sid, rnd_idx, lat, lon), daemon=True).start()
 
 # ── 檢查候選圖片是否與已用過的座標距離夠遠 ─────────────
 def is_far_enough(lat, lon, used_coords, region):
@@ -257,6 +328,11 @@ def api_start():
     session["round"] = 0
     session["scores"] = []
     session["rounds"] = []
+    # 清除本玩家上一局的答案地名快取
+    sid = _get_sid()
+    with answer_places_lock:
+        for k in [k for k in answer_places if k[0] == sid]:
+            del answer_places[k]
     # 清空舊快取，預載新局圖片
     image_cache[region].clear()
     prefetch(region, [])
@@ -306,6 +382,9 @@ def api_question():
     session["round"] = rnd + 1
     session["rounds"] = rounds
 
+    # 題目確定 → 背景預先反查正確答案地名（不阻塞本回應），結算時直接取用
+    prefetch_answer_place(_get_sid(), rnd, item["lat"], item["lon"])
+
     resp = {"round": rnd + 1, "image_url": item["image_url"], "region": region,
             "is_360": bool(item.get("is_360", False))}
     # 開發測試模式：附帶正確答案座標，前端會直接標示
@@ -335,10 +414,19 @@ def api_submit():
     scores = session.get("scores", [])
     scores.append(score)
     session["scores"] = scores
+
+    # 取用題目確定時就背景反查好的答案地名（可能為 None＝失敗或尚未完成）
+    sid = session.get("sid")
+    true_place = None
+    if sid is not None:
+        with answer_places_lock:
+            true_place = answer_places.get((sid, rnd_idx))
+
     return jsonify({
         "true_lat": true_lat, "true_lon": true_lon,
         "guess_lat": guess_lat, "guess_lon": guess_lon,
         "dist_km": round(dist_km, 2), "score": score, "skipped": skipped,
+        "true_place": true_place,
     })
 
 # ── API：結算總分與等級 ──────────────────────────────────
@@ -381,6 +469,17 @@ def api_hint():
         return jsonify({"found": False})
     return jsonify({"found": True, "lat": hint["lat"],
                     "lon": hint["lon"], "hours": hint["hours"]})
+
+# ── API：反向地理編碼（結算畫面顯示地名用）──────────────
+@app.route("/api/place", methods=["POST"])
+def api_place():
+    data = request.json or {}
+    try:
+        lat = float(data.get("lat"))
+        lon = float(data.get("lon"))
+    except (TypeError, ValueError):
+        return jsonify({"place": None}), 400
+    return jsonify({"place": reverse_geocode(lat, lon)})
 
 # ── API：圖片代理 ────────────────────────────────────────
 # 360 全景需以 WebGL 貼圖呈現，瀏覽器要求影像來源為同源或允許 CORS。

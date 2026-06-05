@@ -23,6 +23,7 @@ let hintUsedThisRound = false;  // 本題是否已成功使用提示
 let hintFailedThisRound = false;// 本題提示是否失敗（顯示「提示失敗」且本題停用）
 let hintMarker = null;          // 地圖上的黃色提示點標記
 let hintToastTimer = null;      // 提示框自動隱藏計時器
+let placeReqId = 0;             // 結算地名查詢的請求序號（防止過期回應覆蓋）
 
 // 題目是否已就緒（題目資訊回來且圖片載入完成）。未就緒前禁止送出／跳過。
 let questionReady = false;
@@ -482,6 +483,24 @@ function showResult(data) {
         data.skipped ? "未猜測" : `📏 距離正確位置：${data.dist_km} 公里`;
     document.getElementById("resultScore").textContent = `⭐ 本回合得分：${data.score} 分`;
 
+    // 反向地理編碼：正確答案在題目確定時已背景預查，submit 直接帶回（省一次請求）；
+    // 沒帶回（失敗或尚未完成）才即時反查。玩家猜測一律即時反查。
+    const reqId = ++placeReqId;
+    const truePlaceEl = document.getElementById("resultTruePlace");
+    const guessPlaceEl = document.getElementById("resultGuessPlace");
+    if (data.true_place) {
+        truePlaceEl.textContent = "✅ 正確位置：" + data.true_place;
+    } else {
+        truePlaceEl.textContent = "✅ 正確位置：查詢中…";
+        fillPlace(truePlaceEl, "✅ 正確位置：", data.true_lat, data.true_lon, reqId);
+    }
+    if (data.skipped) {
+        guessPlaceEl.textContent = "";
+    } else {
+        guessPlaceEl.textContent = "📍 您的猜測：查詢中…";
+        fillPlace(guessPlaceEl, "📍 您的猜測：", data.guess_lat, data.guess_lon, reqId);
+    }
+
     if (resultLeaflet) { resultLeaflet.remove(); resultLeaflet = null; }
 
     const trueLL  = [data.true_lat,  data.true_lon];
@@ -508,6 +527,22 @@ function showResult(data) {
     } else {
         resultLeaflet.setView(trueLL, 8);
     }
+}
+
+// 向後端查詢地名並填入結算畫面；reqId 防止上一回合的延遲回應蓋掉新內容
+async function fillPlace(el, prefix, lat, lon, reqId) {
+    let place = null;
+    try {
+        const res = await fetch("/api/place", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ lat, lon }),
+        });
+        const j = await res.json();
+        place = j.place;
+    } catch (e) { /* 查詢失敗則退而顯示座標 */ }
+    if (reqId !== placeReqId) return;   // 已進入新回合，放棄這次更新
+    el.textContent = prefix + (place || `${lat.toFixed(3)}, ${lon.toFixed(3)}`);
 }
 
 document.getElementById("nextBtn").addEventListener("click", async () => {
