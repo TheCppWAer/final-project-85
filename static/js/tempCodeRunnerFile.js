@@ -1,0 +1,1 @@
+const MAX_ZOOM = 18;

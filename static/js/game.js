@@ -93,8 +93,10 @@ function initMap(center, zoom) {
     // 玩家點擊地圖放置猜測標記
     map.on("click", (e) => {
         if (submitted || !questionReady) return;
+        // 地圖會左右無限重複，點到第幾個「世界副本」會讓經度跑出 [-180,180]，
+        // 送出/顯示/反向地理編碼一律用正規化後的經度；標記仍留在點擊處避免跳走
         guessLat = e.latlng.lat;
-        guessLon = e.latlng.lng;
+        guessLon = ((e.latlng.lng + 180) % 360 + 360) % 360 - 180;
         if (guessMarker) {
             guessMarker.setLatLng(e.latlng);
         } else {

@@ -39,7 +39,7 @@ SCORE_SCALE = {"taipei": 72.0, "europe": 3049.0}
 # 歐洲模式：定在義大利中心，Zoom 5
 MAP_VIEW = {
     "taipei": {"center": [25.0330, 121.5654], "zoom": 10},
-    "europe": {"center": [42.5000, 12.5000],  "zoom": 5},
+    "europe": {"center": [42.5000, 12.5000],  "zoom": 3},
 }
 
 # ── 開發測試開關（僅手動修改）─────────────────────────────
@@ -399,6 +399,9 @@ def api_submit():
     data = request.json or {}
     guess_lat = float(data.get("lat", 0))
     guess_lon = float(data.get("lon", 0))
+    # 防呆：經度正規化到 [-180,180]、緯度夾在 [-90,90]
+    guess_lon = ((guess_lon + 180) % 360 + 360) % 360 - 180
+    guess_lat = max(-90.0, min(90.0, guess_lat))
     skipped = data.get("skipped", False)
     region = session.get("region", "taipei")
     rounds = session.get("rounds", [])
