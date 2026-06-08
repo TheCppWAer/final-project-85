@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
-  <title>GeoMapper — 遊戲中</title>
+  <title>MapGuessr — 遊戲中</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <!-- Pannellum：用於 360 全景圖的拖曳旋轉檢視 -->
@@ -13,7 +13,7 @@
 <body class="game-page">
 
 <header class="topbar">
-  <div class="logo">🌍 GeoMapper</div>
+  <div class="logo">🌍 MapGuessr</div>
   <div class="round-info">回合 <span id="roundNum">1</span> / 5</div>
   <div class="score-display">本局得分：<span id="totalScore">0</span></div>
 </header>
@@ -31,7 +31,7 @@
 <div class="photo-panel">
   <!-- 計時器疊在照片區域頂部，置中顯示 -->
   <div class="photo-timer">
-    <span class="photo-timer-text">⏱️ <span id="timer">60</span>s</span>
+    <span class="photo-timer-text"> <span id="timer">60</span>s</span>
     <div class="timer-bar-bg">
       <div class="timer-bar" id="timerBar"></div>
     </div>

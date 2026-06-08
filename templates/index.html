@@ -2,38 +2,37 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
-  <title>GeoMapper — 地理猜謎遊戲</title>
+  <title>MapGuessr — 地理猜謎遊戲</title>
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body class="start-page">
   <div class="start-card">
-    <h1>🌍 GeoMapper</h1>
+    <h1>🌍 MapGuessr</h1>
     <p class="subtitle">觀看真實街景照片，猜出拍攝地點！</p>
     <div class="region-selector">
       <label class="region-btn selected" id="btn-taipei">
         <input type="radio" name="region" value="taipei" checked>
-        <span>🏙️ 台北模式</span>
-        <small>難度：簡單</small>
+        <span>🗺️ 簡單模式</span>
+        <small>北台灣</small>
       </label>
       <label class="region-btn" id="btn-europe">
         <input type="radio" name="region" value="europe">
-        <span>🗺️ 歐洲模式</span>
-        <small>難度：困難</small>
+        <span>🗺️ 困難模式</span>
+        <small>歐洲地區</small>
       </label>
     </div>
     <div class="rules">
       <h3>遊戲規則</h3>
       <ul>
-        <li>🔄 共 5 回合，每回合展示一張街景照片</li>
-        <li>📍 在左側地圖點擊猜測拍攝地點</li>
-        <li>⏱️ 每回合 60 秒倒數，時間到自動送出</li>
-        <li>🔍 地圖縮放限制於 Zoom 10（避免看到地名）</li>
-        <li>🏆 每回合最高 10,000 分，共 50,000 分</li>
+        <li>1. 共 5 回合，每回合展示一張街景照片</li>
+        <li>2. 在左側地圖點擊猜測拍攝地點</li>
+        <li>3. 每回合 60 秒倒數，時間到自動送出</li>
+        <li>4. 每回合最高 10,000 分，共 50,000 分</li>
       </ul>
     </div>
-    <button class="btn-start" id="startBtn">🚀 開始遊戲</button>
+    <button class="btn-start" id="startBtn">開始遊戲</button>
     <div class="history-link">
-      <a href="#" id="showHistory">📊 查看歷史紀錄</a>
+      <a href="#" id="showHistory">歷史紀錄</a>
     </div>
     <div id="historyPanel" class="history-panel hidden"></div>
   </div>
