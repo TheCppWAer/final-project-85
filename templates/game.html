@@ -75,6 +75,8 @@
 <!-- 提示失敗時置中顯示的淡紅色提示框（3 秒後自動隱藏）-->
 <div class="hint-toast hidden" id="hintToast"></div>
 
-<script src="/static/js/game.js"></script>
+<!-- 拆分後的 JS 改以 ES module 載入：只需引入進入點 main.js，
+     其餘模組由 main.js 透過 import 連結（瀏覽器自動載入）。 -->
+<script type="module" src="/static/js/main.js"></script>
 </body>
 </html>
