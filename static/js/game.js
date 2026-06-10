@@ -32,7 +32,7 @@ let loadWatchdog = null;
 
 const MAX_ROUNDS = 5;
 const TIMER_SECS = 60;
-const MAX_ZOOM = 13;
+const MAX_ZOOM = 18;
 const LOAD_TIMEOUT_MS = 10000;   // 圖片載入超過此時間 → 開放跳過，避免卡住
 
 // classic 載入畫面：做成與全景（Pannellum）相同的「Loading... + 進度條」外觀
