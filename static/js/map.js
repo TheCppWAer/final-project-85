@@ -10,14 +10,15 @@ export function initMap(center, zoom) {
     state.mapCenter = center;
     state.mapZoom = zoom;
 
-    // 只用「單一」彩色底圖整局常駐：放大時僅這一層需載入圖磚，避免變慢／灰白。
+    // 彩色無地名底圖（整局常駐）
     state.baseLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png", {
         attribution: "© OpenStreetMap contributors © CARTO",
         subdomains: "abcd",
         maxZoom: MAX_ZOOM,
     });
 
-    // 地名標籤：輕量透明圖層，只在 zoom <= 10 疊加；放大（>10）時移除。
+    // 地名標籤：輕量透明圖層。
+    // ※ 改版：地名全程顯示（含放大時），不再依縮放級別開關。
     state.labelsLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png", {
         attribution: "© CARTO",
         subdomains: "abcd",
@@ -30,17 +31,11 @@ export function initMap(center, zoom) {
         maxZoom: MAX_ZOOM,
         layers: [state.baseLayer],
     });
-    if (zoom <= 10) state.labelsLayer.addTo(state.map);
 
-    // zoom <= 10 顯示地名、> 10 移除地名（底圖始終不動，不會重新下載）
-    state.map.on("zoomend", () => {
-        const z = state.map.getZoom();
-        if (z > 10) {
-            if (state.map.hasLayer(state.labelsLayer)) state.map.removeLayer(state.labelsLayer);
-        } else {
-            if (!state.map.hasLayer(state.labelsLayer)) state.labelsLayer.addTo(state.map);
-        }
-    });
+    // 改版：無條件掛上地名圖層，整局常駐顯示。
+    state.labelsLayer.addTo(state.map);
+
+    // （原本依 zoom 自動開關地名的 zoomend 監聽器已移除，因為地名現在全程顯示。）
 
     // 玩家點擊地圖放置猜測標記
     state.map.on("click", (e) => {
